@@ -32,7 +32,7 @@ module Unicorn::WorkerKiller
     # affect the request.
     #
     # @see https://github.com/defunkt/unicorn/blob/master/lib/unicorn/oob_gc.rb#L40
-    def self.new(app, memory_limit_min = (1024**3), memory_limit_max = (2*(1024**3)), check_cycle = 16, verbose = false)
+    def self.new(app, memory_limit_min = (1024**3), memory_limit_max = (2*(1024**3)), check_cycle = 16, verbose = false, mem_type = "rss")
       ObjectSpace.each_object(Unicorn::HttpServer) do |s|
         s.extend(self)
         s.instance_variable_set(:@_worker_memory_limit_min, memory_limit_min)
@@ -40,6 +40,7 @@ module Unicorn::WorkerKiller
         s.instance_variable_set(:@_worker_check_cycle, check_cycle)
         s.instance_variable_set(:@_worker_check_count, 0)
         s.instance_variable_set(:@_verbose, verbose)
+        s.instance_variable_set(:@_mem_type, mem_type)
       end
       app # pretend to be Rack middleware since it was in the past
     end
@@ -56,12 +57,18 @@ module Unicorn::WorkerKiller
       @_worker_memory_limit ||= @_worker_memory_limit_min + randomize(@_worker_memory_limit_max - @_worker_memory_limit_min + 1)
       @_worker_check_count += 1
       if @_worker_check_count % @_worker_check_cycle == 0
-        rss = GetProcessMem.new.bytes
-        logger.info "#{self}: worker (pid: #{Process.pid}) using #{rss} bytes." if @_verbose
-        if rss > @_worker_memory_limit
-          logger.warn "#{self}: worker (pid: #{Process.pid}) exceeds memory limit (#{rss} bytes > #{@_worker_memory_limit} bytes)"
+        bytes = GetProcessMem.new(mem_type: @mem_type).bytes
+
+        if @_verbose
+          logger.info "#{self}: worker (pid: #{Process.pid}) using #{bytes} bytes."
+        end
+
+        if bytes > @_worker_memory_limit
+          logger.warn "#{self}: worker (pid: #{Process.pid}) exceeds memory limit (#{bytes} bytes > #{@_worker_memory_limit} bytes)"
+
           Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start)
         end
+
         @_worker_check_count = 0
       end
     end
