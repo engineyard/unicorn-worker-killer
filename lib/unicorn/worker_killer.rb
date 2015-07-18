@@ -33,20 +33,20 @@ module Unicorn::WorkerKiller
     #
     # @see https://github.com/defunkt/unicorn/blob/master/lib/unicorn/oob_gc.rb#L40
     def self.new(app, options={})
-      memory_limit_min = options.fetch(:min) { 1024 ** 3 }
       memory_limit_max = options.fetch(:max) { (2 * ( 1024**3 )) }
       check_cycle      = options[:check_cycle] || 16
       verbose          = options.fetch(:verbose, false)
       mem_type         = options.fetch(:mem_type, "rss")
+      jitter           = options.fetch(:max_jitter, 0.05)
 
       ObjectSpace.each_object(Unicorn::HttpServer) do |s|
         s.extend(self)
-        s.instance_variable_set(:@_worker_memory_limit_min, memory_limit_min)
         s.instance_variable_set(:@_worker_memory_limit_max, memory_limit_max)
         s.instance_variable_set(:@_worker_check_cycle, check_cycle)
         s.instance_variable_set(:@_worker_check_count, 0)
         s.instance_variable_set(:@_verbose, verbose)
         s.instance_variable_set(:@_mem_type, mem_type)
+        s.instance_variable_set(:@_max_jitter, jitter)
       end
 
       app # pretend to be Rack middleware since it was in the past
@@ -58,11 +58,13 @@ module Unicorn::WorkerKiller
 
     def process_client(client)
       super(client) # Unicorn::HttpServer#process_client
-      return if @_worker_memory_limit_min == 0 && @_worker_memory_limit_max == 0
+
+      return if @_worker_memory_limit_max == 0
 
       @_worker_process_start ||= Time.now
-      @_worker_memory_limit ||= @_worker_memory_limit_min + randomize(@_worker_memory_limit_max - @_worker_memory_limit_min + 1)
+      @_worker_memory_limit ||= @_worker_memory_limit_max + randomize(0.05 * @_max_jitter)
       @_worker_check_count += 1
+
       if @_worker_check_count % @_worker_check_cycle == 0
         bytes = GetProcessMem.new(Process.pid, mem_type: @mem_type).bytes
 
