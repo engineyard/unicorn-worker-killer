@@ -66,16 +66,15 @@ module Unicorn::WorkerKiller
       @_worker_check_count += 1
 
       if @_worker_check_count % @_worker_check_cycle == 0
-        bytes = GetProcessMem.new(Process.pid, mem_type: @mem_type).bytes
-
-        if @_verbose
-          logger.info "#{self}: worker (pid: #{Process.pid}) using #{bytes} #{@mem_type} bytes."
-        end
+        process_mem = GetProcessMem.new(Process.pid, mem_type: @mem_type)
+        bytes = process_mem.bytes
 
         if bytes > @_worker_memory_limit
-          logger.warn "#{self}: worker (pid: #{Process.pid}) exceeds memory limit (#{bytes} bytes > #{@_worker_memory_limit} bytes)"
+          logger.warn "#{self}: worker (pid: #{Process.pid}) #{process_mem.mb} #{@mem_type} megabytes exceeds memory limit #{@_worker_memory_limit} bytes"
 
           Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start)
+        elsif @_verbose
+          logger.info "#{self}: worker (pid: #{Process.pid}) using #{process_mem.mb} #{@mem_type} megabytes (< #{@_worker_memory_limit} bytes)"
         end
 
         @_worker_check_count = 0
