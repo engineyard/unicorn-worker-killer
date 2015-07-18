@@ -57,7 +57,7 @@ module Unicorn::WorkerKiller
       @_worker_memory_limit ||= @_worker_memory_limit_min + randomize(@_worker_memory_limit_max - @_worker_memory_limit_min + 1)
       @_worker_check_count += 1
       if @_worker_check_count % @_worker_check_cycle == 0
-        bytes = GetProcessMem.new(mem_type: @mem_type).bytes
+        bytes = GetProcessMem.new(Process.pid, mem_type: @mem_type).bytes
 
         if @_verbose
           logger.info "#{self}: worker (pid: #{Process.pid}) using #{bytes} bytes."
