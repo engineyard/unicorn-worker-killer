@@ -32,7 +32,13 @@ module Unicorn::WorkerKiller
     # affect the request.
     #
     # @see https://github.com/defunkt/unicorn/blob/master/lib/unicorn/oob_gc.rb#L40
-    def self.new(app, memory_limit_min = (1024**3), memory_limit_max = (2*(1024**3)), check_cycle = 16, verbose = false, mem_type = "rss")
+    def self.new(app, options={})
+      memory_limit_min = options.fetch(:min) { 1024 ** 3 }
+      memory_limit_max = options.fetch(:max) { (2 * ( 1024**3 )) }
+      check_cycle      = options[:check_cycle] || 16
+      verbose          = options.fetch(:verbose, false)
+      mem_type         = options.fetch(:mem_type, "rss")
+
       ObjectSpace.each_object(Unicorn::HttpServer) do |s|
         s.extend(self)
         s.instance_variable_set(:@_worker_memory_limit_min, memory_limit_min)
@@ -42,6 +48,7 @@ module Unicorn::WorkerKiller
         s.instance_variable_set(:@_verbose, verbose)
         s.instance_variable_set(:@_mem_type, mem_type)
       end
+
       app # pretend to be Rack middleware since it was in the past
     end
 
@@ -60,7 +67,7 @@ module Unicorn::WorkerKiller
         bytes = GetProcessMem.new(Process.pid, mem_type: @mem_type).bytes
 
         if @_verbose
-          logger.info "#{self}: worker (pid: #{Process.pid}) using #{bytes} bytes."
+          logger.info "#{self}: worker (pid: #{Process.pid}) using #{bytes} #{@mem_type} bytes."
         end
 
         if bytes > @_worker_memory_limit
